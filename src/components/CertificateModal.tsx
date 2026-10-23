@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import type { CertificateData } from '../types';
 import { 
   Download, 
@@ -6,11 +6,11 @@ import {
   X, 
   CheckCircle, 
   Award, 
-  FileCheck,
   QrCode,
   Loader2,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  ArrowUp
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -27,8 +27,16 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   onClose,
 }) => {
   const certificateRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+
+  // Asegurar que al abrirse el modal siempre haga scroll al inicio
+  useEffect(() => {
+    if (isOpen && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [isOpen]);
 
   if (!isOpen || !data) return null;
 
@@ -37,7 +45,6 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     setIsExporting(true);
 
     try {
-      // Guardar transformación previa y reiniciar zoom temporalmente para captura perfecta
       const originalTransform = certificateRef.current.style.transform;
       certificateRef.current.style.transform = 'none';
 
@@ -48,7 +55,6 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         backgroundColor: '#ffffff',
       });
 
-      // Restaurar zoom
       certificateRef.current.style.transform = originalTransform;
 
       const imgData = canvas.toDataURL('image/png');
@@ -58,8 +64,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         format: 'a4',
       });
 
-      const imgWidth = 210; // A4 width en mm
-      const pageHeight = 297; // A4 height en mm
+      const imgWidth = 210;
+      const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       let heightLeft = imgHeight;
@@ -83,6 +89,12 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     window.print();
   };
 
+  const scrollToTop = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const formattedDate = new Date(data.issuedAt).toLocaleDateString('es-CO', {
     day: '2-digit',
     month: 'long',
@@ -92,13 +104,17 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md">
+    // items-start con overflow-y-auto en el contenedor principal garantiza que la parte superior NUNCA se corte
+    <div 
+      ref={scrollContainerRef}
+      className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden bg-slate-950/85 backdrop-blur-md p-2 sm:p-6 flex justify-center items-start"
+    >
       <div 
-        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col max-h-[92vh]"
+        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-300 overflow-hidden flex flex-col my-2 sm:my-6 animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Barra de Acciones Superior (Fija / Sticky) */}
-        <div className="sticky top-0 z-40 bg-slate-900 px-4 sm:px-6 py-3 text-white flex flex-wrap items-center justify-between gap-3 shadow-md no-print border-b border-slate-800">
+        {/* Barra de Acciones Superior (Sticky / Fija) */}
+        <div className="sticky top-0 z-50 bg-slate-900 px-4 sm:px-6 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 shadow-lg no-print border-b border-slate-800">
           <div className="flex items-center gap-2">
             <span className="flex h-3 w-3 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -108,7 +124,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               <span className="text-sm font-bold tracking-wide text-white block leading-tight">
                 Certificado Oficial Emitido
               </span>
-              <span className="text-[10px] text-emerald-400 font-mono">
+              <span className="text-[10px] text-amber-400 font-mono">
                 Folio: {data.folio}
               </span>
             </div>
@@ -116,9 +132,9 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
           <div className="flex items-center gap-2">
             {/* Controles de Zoom */}
-            <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 mr-2">
+            <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-0.5 border border-slate-700 mr-1">
               <button
-                onClick={() => setZoomLevel(prev => Math.max(0.7, prev - 0.1))}
+                onClick={() => setZoomLevel(prev => Math.max(0.65, prev - 0.1))}
                 className="p-1 hover:text-white text-slate-400 transition-colors"
                 title="Reducir tamaño para ver completo"
               >
@@ -128,7 +144,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 {Math.round(zoomLevel * 100)}%
               </span>
               <button
-                onClick={() => setZoomLevel(prev => Math.min(1.2, prev + 0.1))}
+                onClick={() => setZoomLevel(prev => Math.min(1.15, prev + 0.1))}
                 className="p-1 hover:text-white text-slate-400 transition-colors"
                 title="Aumentar tamaño"
               >
@@ -148,7 +164,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             <button
               onClick={handleDownloadPDF}
               disabled={isExporting}
-              className="px-4 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow flex items-center gap-1.5 transition-all disabled:opacity-50"
+              className="px-4 py-1.5 text-xs font-black bg-blue-600 hover:bg-blue-500 text-white rounded-lg shadow-md hover:shadow-blue-500/30 flex items-center gap-1.5 transition-all disabled:opacity-50"
               title="Descargar en PDF a tu dispositivo"
             >
               {isExporting ? (
@@ -158,7 +174,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-4 h-4 text-white" />
                   <span>Descargar PDF</span>
                 </>
               )}
@@ -174,22 +190,22 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           </div>
         </div>
 
-        {/* Contenedor con SCROLL VERTICAL Y HORIZONTAL SUAVE */}
-        <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-6 bg-slate-100 flex justify-center items-start">
+        {/* Contenedor del Certificado */}
+        <div className="p-3 sm:p-8 bg-slate-100 flex justify-center items-start overflow-x-auto">
           <div
             style={{ 
               transform: `scale(${zoomLevel})`,
               transformOrigin: 'top center',
-              transition: 'transform 0.2s ease-out'
+              transition: 'transform 0.15s ease-out'
             }}
-            className="w-full max-w-[760px] my-2"
+            className="w-full max-w-[760px]"
           >
             <div
               id="official-certificate"
               ref={certificateRef}
               className="bg-white p-6 sm:p-10 rounded-xl shadow-lg border-[6px] border-double border-blue-900 relative text-slate-800 font-sans"
             >
-              {/* Adorno perimetral con los colores de la bandera/marca */}
+              {/* Adorno perimetral con los colores de la marca */}
               <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-700 via-amber-400 to-red-600"></div>
 
               {/* Encabezado con Logo Oficial */}
@@ -369,11 +385,18 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
         </div>
 
         {/* Footer FIJO / STICKY con Botones Grandes de Acción */}
-        <div className="sticky bottom-0 z-40 bg-white px-4 sm:px-6 py-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shadow-lg no-print">
+        <div className="sticky bottom-0 z-50 bg-white px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 shadow-lg no-print">
           <div className="flex items-center gap-2 text-xs text-slate-600">
-            <FileCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="hidden sm:inline">Usa la rueda del ratón o desliza con el dedo para recorrer todo el documento.</span>
-            <span className="sm:hidden font-medium">Documento oficial listo para guardar</span>
+            <button
+              onClick={scrollToTop}
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1"
+              title="Volver arriba"
+            >
+              <ArrowUp className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-semibold">Subir al Inicio</span>
+            </button>
+            <span className="hidden sm:inline text-slate-400">|</span>
+            <span className="hidden sm:inline">Desplaza hacia abajo para revisar las firmas y el código QR oficial.</span>
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
@@ -388,7 +411,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
             <button
               onClick={handleDownloadPDF}
               disabled={isExporting}
-              className="px-5 py-2 text-xs font-bold bg-blue-700 hover:bg-blue-800 text-white rounded-xl shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+              className="px-6 py-2.5 text-xs font-black bg-blue-700 hover:bg-blue-800 text-white rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 disabled:opacity-50"
             >
               {isExporting ? (
                 <>
