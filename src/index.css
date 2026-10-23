@@ -31,26 +31,55 @@
   background: linear-gradient(90deg, #0052cc 0%, #f59e0b 50%, #dc2626 100%);
 }
 
-/* Estilos de impresión para el Certificado Oficial */
+/* ==============================================================
+   REGLAS DE IMPRESIÓN OFICIAL (A4 / CARTA) PARA CERTIFICADO
+   ============================================================== */
 @media print {
+  @page {
+    size: portrait;
+    margin: 8mm;
+  }
+
+  /* Forzar impresión de fondos, gradientes y colores exactos */
+  *, *:before, *:after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+
   body * {
     visibility: hidden;
   }
+
   #official-certificate, #official-certificate * {
     visibility: visible;
   }
+
   #official-certificate {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 100vw;
-    height: 100vh;
-    margin: 0;
-    padding: 24px;
-    background: white !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 22px 26px !important;
+    background: #ffffff !important;
+    border: 5px double #0c2d57 !important;
+    border-radius: 8px !important;
     box-shadow: none !important;
-    border: none !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
+
   .no-print {
     display: none !important;
   }
