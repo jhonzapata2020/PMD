@@ -2,18 +2,26 @@ import { createClient } from '@supabase/supabase-js';
 import type { NewAssociate, ExistingAssociateUpdate } from '../types';
 
 // Credenciales desde variables de entorno de Vite
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  !supabaseUrl.includes('TU_SUPABASE_URL')
-);
+function getSupabaseClient() {
+  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('TU_SUPABASE_URL')) {
+    return null;
+  }
+  try {
+    // Validar formato URL estricto
+    const parsed = new URL(supabaseUrl);
+    if (!parsed.protocol.startsWith('http')) return null;
+    return createClient(supabaseUrl, supabaseAnonKey);
+  } catch (err) {
+    console.warn('URL de Supabase inválida o no configurada, operando en modo local:', err);
+    return null;
+  }
+}
 
-export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : null;
+export const supabase = getSupabaseClient();
+export const isSupabaseConfigured = Boolean(supabase !== null);
 
 // Claves locales para almacenamiento cuando Supabase no está conectado
 const LOCAL_STORAGE_NEW_KEY = 'pmd_new_associates';
