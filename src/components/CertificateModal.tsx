@@ -39,6 +39,82 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
   if (!isOpen || !data) return null;
 
+  // Función de impresión infalible usando iframe aislado (sin páginas en blanco)
+  const handlePrint = () => {
+    const certificateEl = document.getElementById('official-certificate');
+    if (!certificateEl) return;
+
+    // Obtener o crear iframe oculto de impresión
+    let printFrame = document.getElementById('pmd-print-frame') as HTMLIFrameElement;
+    if (!printFrame) {
+      printFrame = document.createElement('iframe');
+      printFrame.id = 'pmd-print-frame';
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      document.body.appendChild(printFrame);
+    }
+
+    const frameDoc = printFrame.contentWindow?.document || printFrame.contentDocument;
+    if (!frameDoc) return;
+
+    frameDoc.open();
+    frameDoc.write(`
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Certificado Oficial - ${data.fullName}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+        <style>
+          @page {
+            size: portrait;
+            margin: 6mm;
+          }
+          * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+          }
+          #official-certificate {
+            width: 100% !important;
+            max-width: 720px !important;
+            margin: 0 auto !important;
+            box-shadow: none !important;
+            border: 5px double #0c2d57 !important;
+            padding: 24px 28px !important;
+          }
+        </style>
+      </head>
+      <body>
+        ${certificateEl.outerHTML}
+      </body>
+      </html>
+    `);
+    frameDoc.close();
+
+    // Tiempo prudente para cargar estilos e imagen antes de disparar la impresión
+    setTimeout(() => {
+      printFrame.contentWindow?.focus();
+      printFrame.contentWindow?.print();
+    }, 450);
+  };
+
   const handleDownloadPDF = async () => {
     if (!certificateRef.current) return;
     setIsExporting(true);
@@ -80,15 +156,11 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
       pdf.save(`Certificado_PMD_SAS_${cleanDoc}.pdf`);
     } catch (error) {
-      console.warn('Fallback a impresión directa:', error);
-      window.print();
+      console.warn('Fallback a impresión directa para guardar como PDF:', error);
+      handlePrint();
     } finally {
       setIsExporting(false);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   const scrollToTop = () => {
@@ -164,7 +236,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               onClick={handlePrint}
               className="px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
               style={{ backgroundColor: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
-              title="Imprimir documento oficial en papel o PDF"
+              title="Imprimir documento oficial en papel o guardar en PDF"
             >
               <Printer className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} />
               <span>Imprimir</span>
@@ -245,7 +317,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 }}
               />
 
-              {/* Encabezado con Logo y Datos Institucionales (Ajuste Blindado para Imprimir) */}
+              {/* Encabezado con Logo y Datos Institucionales */}
               <div 
                 style={{
                   display: 'flex',
