@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { NewAssociate, ExistingAssociateUpdate } from '../types';
+import type { NewAssociate, ExistingAssociateUpdate, BenefitStatus } from '../types';
 
 // Credenciales desde variables de entorno de Vite
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
@@ -10,7 +10,6 @@ function getSupabaseClient() {
     return null;
   }
   try {
-    // Validar formato URL estricto
     const parsed = new URL(supabaseUrl);
     if (!parsed.protocol.startsWith('http')) return null;
     return createClient(supabaseUrl, supabaseAnonKey);
@@ -24,8 +23,8 @@ export const supabase = getSupabaseClient();
 export const isSupabaseConfigured = Boolean(supabase !== null);
 
 // Claves locales para almacenamiento cuando Supabase no está conectado
-const LOCAL_STORAGE_NEW_KEY = 'pmd_new_associates';
-const LOCAL_STORAGE_EXISTING_KEY = 'pmd_existing_updates';
+const LOCAL_STORAGE_NEW_KEY = 'pmd_new_associates_v2';
+const LOCAL_STORAGE_EXISTING_KEY = 'pmd_existing_updates_v2';
 
 // Datos semilla de ejemplo si no hay nada guardado
 const DEFAULT_NEW_ASSOCIATES: NewAssociate[] = [
@@ -43,6 +42,10 @@ const DEFAULT_NEW_ASSOCIATES: NewAssociate[] = [
     habeas_data: true,
     certificate_folio: 'PMD-COL-2024-8921',
     created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    benefit_status: 'DELIVERED',
+    benefit_type: 'Canasta de Alimentos Mensual',
+    benefit_notes: 'Paquete alimentario #1 entregado en centro de acopio comunal',
+    benefit_date: new Date(Date.now() - 86400000).toISOString(),
   },
   {
     id: 'demo-2',
@@ -58,6 +61,10 @@ const DEFAULT_NEW_ASSOCIATES: NewAssociate[] = [
     habeas_data: true,
     certificate_folio: 'PMD-COL-2024-9145',
     created_at: new Date(Date.now() - 86400000).toISOString(),
+    benefit_status: 'IN_PROCESS',
+    benefit_type: 'Vivienda Digna y Mejoramiento',
+    benefit_notes: 'Postulación en validación de subsidio complementario',
+    benefit_date: new Date().toISOString(),
   }
 ];
 
@@ -76,6 +83,10 @@ const DEFAULT_EXISTING_UPDATES: ExistingAssociateUpdate[] = [
     habeas_data: true,
     certificate_folio: 'PMD-INTL-2024-3310',
     created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
+    benefit_status: 'DELIVERED',
+    benefit_type: 'Programa PYMES Productivas',
+    benefit_notes: 'Asignación de capital semilla cooperación bilateral desembolsado',
+    benefit_date: new Date(Date.now() - 3600000 * 2).toISOString(),
   }
 ];
 
@@ -84,6 +95,10 @@ export async function saveNewAssociate(data: Omit<NewAssociate, 'id' | 'created_
     ...data,
     id: crypto.randomUUID ? crypto.randomUUID() : `pmd-${Date.now()}`,
     created_at: new Date().toISOString(),
+    benefit_status: data.benefit_status || 'PENDING',
+    benefit_type: data.benefit_type || '',
+    benefit_notes: data.benefit_notes || '',
+    benefit_date: data.benefit_date || undefined,
   };
 
   if (isSupabaseConfigured && supabase) {
@@ -117,6 +132,10 @@ export async function saveExistingAssociateUpdate(
     ...data,
     id: crypto.randomUUID ? crypto.randomUUID() : `pmd-ext-${Date.now()}`,
     created_at: new Date().toISOString(),
+    benefit_status: data.benefit_status || 'PENDING',
+    benefit_type: data.benefit_type || '',
+    benefit_notes: data.benefit_notes || '',
+    benefit_date: data.benefit_date || undefined,
   };
 
   if (isSupabaseConfigured && supabase) {
@@ -141,6 +160,62 @@ export async function saveExistingAssociateUpdate(
   const updated = [newRecord, ...existing];
   localStorage.setItem(LOCAL_STORAGE_EXISTING_KEY, JSON.stringify(updated));
   return newRecord;
+}
+
+export async function updateNewAssociateBenefit(
+  id: string,
+  benefit: {
+    benefit_status: BenefitStatus;
+    benefit_type: string;
+    benefit_notes: string;
+    benefit_date: string;
+  }
+): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('new_associates')
+        .update(benefit)
+        .eq('id', id);
+      if (!error) return true;
+      console.warn('Error actualizando beneficio en Supabase:', error);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+
+  const existing = getLocalNewAssociates();
+  const updated = existing.map(item => item.id === id ? { ...item, ...benefit } : item);
+  localStorage.setItem(LOCAL_STORAGE_NEW_KEY, JSON.stringify(updated));
+  return true;
+}
+
+export async function updateExistingAssociateBenefit(
+  id: string,
+  benefit: {
+    benefit_status: BenefitStatus;
+    benefit_type: string;
+    benefit_notes: string;
+    benefit_date: string;
+  }
+): Promise<boolean> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('existing_associates_updates')
+        .update(benefit)
+        .eq('id', id);
+      if (!error) return true;
+      console.warn('Error actualizando beneficio en Supabase:', error);
+    } catch (err) {
+      console.warn(err);
+    }
+  }
+
+  const existing = getLocalExistingUpdates();
+  const updated = existing.map(item => item.id === id ? { ...item, ...benefit } : item);
+  localStorage.setItem(LOCAL_STORAGE_EXISTING_KEY, JSON.stringify(updated));
+  return true;
 }
 
 export async function fetchAllNewAssociates(): Promise<NewAssociate[]> {
@@ -208,9 +283,11 @@ function getLocalExistingUpdates(): ExistingAssociateUpdate[] {
 // Script SQL para copiar en Supabase
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================
 -- PROGRAMA COOPERACIÓN INTERNACIONAL COLOMBIA - GRUPO PMD SAS
--- TABLAS Y POLÍTICAS DE SUPABASE
+-- TABLAS Y POLÍTICAS DE SUPABASE CON GESTIÓN DE BENEFICIOS
 -- NIT: 901262947-1
 -- ==============================================================
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 1. Tabla de Nuevos Asociados
 CREATE TABLE IF NOT EXISTS public.new_associates (
@@ -226,8 +303,18 @@ CREATE TABLE IF NOT EXISTS public.new_associates (
     address TEXT NOT NULL,
     habeas_data BOOLEAN NOT NULL DEFAULT true,
     certificate_folio TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    benefit_status TEXT DEFAULT 'PENDING',
+    benefit_type TEXT DEFAULT '',
+    benefit_notes TEXT DEFAULT '',
+    benefit_date TIMESTAMPTZ
 );
+
+-- Si la tabla ya existía, añadir las columnas de beneficios de forma segura
+ALTER TABLE public.new_associates ADD COLUMN IF NOT EXISTS benefit_status TEXT DEFAULT 'PENDING';
+ALTER TABLE public.new_associates ADD COLUMN IF NOT EXISTS benefit_type TEXT DEFAULT '';
+ALTER TABLE public.new_associates ADD COLUMN IF NOT EXISTS benefit_notes TEXT DEFAULT '';
+ALTER TABLE public.new_associates ADD COLUMN IF NOT EXISTS benefit_date TIMESTAMPTZ;
 
 -- 2. Tabla de Actualización de Asociados y Cuentas Internacionales
 CREATE TABLE IF NOT EXISTS public.existing_associates_updates (
@@ -243,28 +330,47 @@ CREATE TABLE IF NOT EXISTS public.existing_associates_updates (
     swift_bic TEXT,
     habeas_data BOOLEAN NOT NULL DEFAULT true,
     certificate_folio TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    benefit_status TEXT DEFAULT 'PENDING',
+    benefit_type TEXT DEFAULT '',
+    benefit_notes TEXT DEFAULT '',
+    benefit_date TIMESTAMPTZ
 );
+
+-- Si la tabla ya existía, añadir las columnas de beneficios de forma segura
+ALTER TABLE public.existing_associates_updates ADD COLUMN IF NOT EXISTS benefit_status TEXT DEFAULT 'PENDING';
+ALTER TABLE public.existing_associates_updates ADD COLUMN IF NOT EXISTS benefit_type TEXT DEFAULT '';
+ALTER TABLE public.existing_associates_updates ADD COLUMN IF NOT EXISTS benefit_notes TEXT DEFAULT '';
+ALTER TABLE public.existing_associates_updates ADD COLUMN IF NOT EXISTS benefit_date TIMESTAMPTZ;
 
 -- Habilitar Row Level Security (RLS)
 ALTER TABLE public.new_associates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.existing_associates_updates ENABLE ROW LEVEL SECURITY;
 
--- Políticas de inserción pública (los usuarios pueden registrarse y enviar formularios)
+-- Políticas de inserción y lectura pública / admin
 CREATE POLICY "Permitir insercion publica en new_associates" 
 ON public.new_associates FOR INSERT 
+WITH CHECK (true);
+
+CREATE POLICY "Permitir lectura en new_associates" 
+ON public.new_associates FOR SELECT 
+USING (true);
+
+CREATE POLICY "Permitir actualizacion en new_associates" 
+ON public.new_associates FOR UPDATE 
+USING (true)
 WITH CHECK (true);
 
 CREATE POLICY "Permitir insercion publica en existing_associates_updates" 
 ON public.existing_associates_updates FOR INSERT 
 WITH CHECK (true);
 
--- Políticas de lectura pública/admin
-CREATE POLICY "Permitir lectura en new_associates" 
-ON public.new_associates FOR SELECT 
-USING (true);
-
 CREATE POLICY "Permitir lectura en existing_associates_updates" 
 ON public.existing_associates_updates FOR SELECT 
 USING (true);
+
+CREATE POLICY "Permitir actualizacion en existing_associates_updates" 
+ON public.existing_associates_updates FOR UPDATE 
+USING (true)
+WITH CHECK (true);
 `;

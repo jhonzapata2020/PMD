@@ -1,3 +1,5 @@
+export type BenefitStatus = 'PENDING' | 'DELIVERED' | 'IN_PROCESS' | 'NOT_ELIGIBLE';
+
 export interface NewAssociate {
   id: string;
   first_name: string;
@@ -12,6 +14,10 @@ export interface NewAssociate {
   habeas_data: boolean;
   certificate_folio: string;
   created_at: string;
+  benefit_status?: BenefitStatus;
+  benefit_type?: string;
+  benefit_notes?: string;
+  benefit_date?: string;
 }
 
 export interface ExistingAssociateUpdate {
@@ -28,6 +34,10 @@ export interface ExistingAssociateUpdate {
   habeas_data: boolean;
   certificate_folio: string;
   created_at: string;
+  benefit_status?: BenefitStatus;
+  benefit_type?: string;
+  benefit_notes?: string;
+  benefit_date?: string;
 }
 
 export interface CertificateData {
