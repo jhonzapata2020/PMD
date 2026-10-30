@@ -10,7 +10,11 @@ import {
   Loader2,
   ZoomIn,
   ZoomOut,
-  ArrowUp
+  ArrowUp,
+  Image as ImageIcon,
+  Share2,
+  Smartphone,
+  Check
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -29,22 +33,177 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   const certificateRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [exportMessage, setExportMessage] = useState<string>('');
+  const [gallerySuccess, setGallerySuccess] = useState(false);
+
+  // Auto-ajuste de escala inteligente para celulares (responsive design)
+  const getResponsiveZoom = () => {
+    if (typeof window !== 'undefined') {
+      const w = window.innerWidth;
+      if (w < 380) return 0.44;
+      if (w < 440) return 0.50;
+      if (w < 640) return 0.64;
+      if (w < 820) return 0.82;
+    }
+    return 1;
+  };
+
+  const [zoomLevel, setZoomLevel] = useState<number>(getResponsiveZoom);
 
   useEffect(() => {
-    if (isOpen && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
+    if (isOpen) {
+      setZoomLevel(getResponsiveZoom());
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
     }
   }, [isOpen]);
 
   if (!isOpen || !data) return null;
 
-  // Función de impresión infalible usando iframe aislado (sin páginas en blanco)
+  // Generador centralizado de canvas en alta calidad
+  const generateCertificateCanvas = async () => {
+    if (!certificateRef.current) return null;
+    const originalTransform = certificateRef.current.style.transform;
+    certificateRef.current.style.transform = 'none';
+
+    const canvas = await html2canvas(certificateRef.current, {
+      scale: 2.2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      onclone: (clonedDoc) => {
+        const el = clonedDoc.getElementById('official-certificate');
+        if (el) {
+          el.style.transform = 'none';
+          el.style.boxShadow = 'none';
+        }
+      }
+    });
+
+    certificateRef.current.style.transform = originalTransform;
+    return canvas;
+  };
+
+  // 1. Descarga como PDF (Documento oficial)
+  const handleDownloadPDF = async () => {
+    if (!certificateRef.current) return;
+    setIsExporting(true);
+    setExportMessage('Generando PDF oficial...');
+
+    try {
+      const canvas = await generateCertificateCanvas();
+      if (!canvas) throw new Error('No canvas');
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const imgWidth = 210;
+      const pageHeight = 297;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, Math.min(imgHeight, pageHeight));
+
+      const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
+      pdf.save(`Certificado_PMD_SAS_${cleanDoc}.pdf`);
+    } catch (error) {
+      console.warn('Fallback a impresión directa para guardar como PDF:', error);
+      handlePrint();
+    } finally {
+      setIsExporting(false);
+      setExportMessage('');
+    }
+  };
+
+  // 2. Guardar en Galería (Imagen PNG de alta resolución)
+  // En smartphones (Android e iOS), descargar un PNG lo guarda directamente en Fotos / Galería
+  const handleSaveToGallery = async () => {
+    if (!certificateRef.current) return;
+    setIsExporting(true);
+    setExportMessage('Guardando imagen en Galería...');
+
+    try {
+      const canvas = await generateCertificateCanvas();
+      if (!canvas) throw new Error('No canvas');
+
+      const imgData = canvas.toDataURL('image/png');
+      const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
+      const link = document.createElement('a');
+      link.download = `Certificado_PMD_SAS_${cleanDoc}.png`;
+      link.href = imgData;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setGallerySuccess(true);
+      setTimeout(() => setGallerySuccess(false), 4500);
+    } catch (error) {
+      console.error('Error guardando en galería:', error);
+      alert('Hubo un inconveniente al generar la imagen. Puedes descargarlo en PDF.');
+    } finally {
+      setIsExporting(false);
+      setExportMessage('');
+    }
+  };
+
+  // 3. Compartir directamente en celular (WhatsApp, correo, Drive, etc.) usando Web Share API
+  const handleShareMobile = async () => {
+    if (!certificateRef.current) return;
+    setIsExporting(true);
+    setExportMessage('Preparando para compartir...');
+
+    try {
+      const canvas = await generateCertificateCanvas();
+      if (!canvas) throw new Error('No canvas');
+
+      const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/png', 0.95);
+      });
+
+      if (blob && typeof navigator !== 'undefined' && navigator.share) {
+        const file = new File([blob], `Certificado_PMD_${cleanDoc}.png`, { type: 'image/png' });
+        
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: `Certificado Oficial - ${data.fullName}`,
+            text: `Certificado Oficial de Registro y Adscripción - Grupo PMD SAS (Folio: ${data.folio})`,
+            files: [file]
+          });
+          return;
+        }
+      }
+
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({
+          title: `Certificado Oficial - ${data.fullName}`,
+          text: `Certificado Oficial de Registro en el Programa de Cooperación Internacional Colombia - Grupo PMD SAS. Folio: ${data.folio}`,
+          url: window.location.href
+        });
+      } else {
+        await handleSaveToGallery();
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.warn('Error al compartir:', err);
+      }
+    } finally {
+      setIsExporting(false);
+      setExportMessage('');
+    }
+  };
+
+  // 4. Impresión infalible en papel o guardado en PDF
   const handlePrint = () => {
     const certificateEl = document.getElementById('official-certificate');
     if (!certificateEl) return;
 
-    // Obtener o crear iframe oculto de impresión
     let printFrame = document.getElementById('pmd-print-frame') as HTMLIFrameElement;
     if (!printFrame) {
       printFrame = document.createElement('iframe');
@@ -108,59 +267,10 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     `);
     frameDoc.close();
 
-    // Tiempo prudente para cargar estilos e imagen antes de disparar la impresión
     setTimeout(() => {
       printFrame.contentWindow?.focus();
       printFrame.contentWindow?.print();
     }, 450);
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!certificateRef.current) return;
-    setIsExporting(true);
-
-    try {
-      const originalTransform = certificateRef.current.style.transform;
-      certificateRef.current.style.transform = 'none';
-
-      const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#ffffff',
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('official-certificate');
-          if (el) {
-            el.style.transform = 'none';
-            el.style.boxShadow = 'none';
-          }
-        }
-      });
-
-      certificateRef.current.style.transform = originalTransform;
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, Math.min(imgHeight, pageHeight));
-
-      const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
-      pdf.save(`Certificado_PMD_SAS_${cleanDoc}.pdf`);
-    } catch (error) {
-      console.warn('Fallback a impresión directa para guardar como PDF:', error);
-      handlePrint();
-    } finally {
-      setIsExporting(false);
-    }
   };
 
   const scrollToTop = () => {
@@ -177,95 +287,78 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     minute: '2-digit',
   });
 
+  const canNativeShare = typeof navigator !== 'undefined' && Boolean(navigator.share);
+
   return (
     <div 
       ref={scrollContainerRef}
       className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden p-2 sm:p-6 flex justify-center items-start"
-      style={{ backgroundColor: 'rgba(2, 6, 23, 0.85)', backdropFilter: 'blur(8px)' }}
+      style={{ backgroundColor: 'rgba(2, 6, 23, 0.88)', backdropFilter: 'blur(8px)' }}
     >
       <div 
-        className="relative w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-2 sm:my-6"
+        className="relative w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden flex flex-col my-1 sm:my-6"
         style={{ backgroundColor: '#ffffff', border: '1px solid #cbd5e1' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Barra Superior Fija (Sticky) */}
         <div 
-          className="sticky top-0 z-50 px-4 sm:px-6 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 shadow-md no-print"
+          className="sticky top-0 z-50 px-3.5 sm:px-6 py-3 text-white flex items-center justify-between gap-2 shadow-md no-print"
           style={{ backgroundColor: '#0f172a', borderBottom: '1px solid #1e293b' }}
         >
-          <div className="flex items-center gap-2">
-            <span className="flex h-3 w-3 relative">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-3 w-3 relative shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: '#34d399' }}></span>
               <span className="relative inline-flex rounded-full h-3 w-3" style={{ backgroundColor: '#10b981' }}></span>
             </span>
-            <div>
-              <span className="text-sm font-bold tracking-wide text-white block leading-tight">
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm font-bold tracking-wide text-white block truncate">
                 Certificado Oficial Emitido
               </span>
-              <span className="text-[10px] font-mono" style={{ color: '#fbbf24' }}>
+              <span className="text-[10px] font-mono block truncate" style={{ color: '#fbbf24' }}>
                 Folio: {data.folio}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Controles de Zoom */}
-            <div className="hidden sm:flex items-center rounded-lg p-0.5 mr-1" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Controles de Zoom para inspeccionar detalles */}
+            <div className="flex items-center rounded-lg p-0.5" style={{ backgroundColor: '#1e293b', border: '1px solid #334155' }}>
               <button
-                onClick={() => setZoomLevel(prev => Math.max(0.65, prev - 0.1))}
-                className="p-1 hover:text-white transition-colors"
-                style={{ color: '#94a3b8' }}
+                onClick={() => setZoomLevel(prev => Math.max(0.40, Math.round((prev - 0.08) * 100) / 100))}
+                className="p-1 hover:text-white transition-colors text-slate-400"
                 title="Alejar"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[10px] font-mono px-1.5" style={{ color: '#e2e8f0' }}>
+              <span className="text-[10px] font-mono px-1 text-slate-300 min-w-[34px] text-center">
                 {Math.round(zoomLevel * 100)}%
               </span>
               <button
-                onClick={() => setZoomLevel(prev => Math.min(1.15, prev + 0.1))}
-                className="p-1 hover:text-white transition-colors"
-                style={{ color: '#94a3b8' }}
+                onClick={() => setZoomLevel(prev => Math.min(1.20, Math.round((prev + 0.08) * 100) / 100))}
+                className="p-1 hover:text-white transition-colors text-slate-400"
                 title="Acercar"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            <button
-              onClick={handlePrint}
-              className="px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors"
-              style={{ backgroundColor: '#1e293b', color: '#e2e8f0', border: '1px solid #334155' }}
-              title="Imprimir documento oficial en papel o guardar en PDF"
-            >
-              <Printer className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} />
-              <span>Imprimir</span>
-            </button>
-
-            <button
-              onClick={handleDownloadPDF}
-              disabled={isExporting}
-              className="px-4 py-1.5 text-xs font-bold text-white rounded-lg shadow flex items-center gap-1.5 transition-all disabled:opacity-50"
-              style={{ backgroundColor: '#0052cc' }}
-              title="Descargar en PDF a tu dispositivo"
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Generando PDF...</span>
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5 text-white" />
-                  <span>Descargar PDF</span>
-                </>
-              )}
-            </button>
+            {/* Botón rápido de compartir en móvil */}
+            {canNativeShare && (
+              <button
+                onClick={handleShareMobile}
+                disabled={isExporting}
+                className="p-2 sm:px-3 sm:py-1.5 text-xs font-bold text-white rounded-lg transition-colors flex items-center gap-1.5 shadow"
+                style={{ backgroundColor: '#16a34a' }}
+                title="Compartir por WhatsApp o redes"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Compartir</span>
+              </button>
+            )}
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg transition-colors ml-1 hover:text-white"
-              style={{ color: '#94a3b8' }}
+              className="p-1.5 rounded-lg transition-colors text-slate-400 hover:text-white hover:bg-slate-800"
               aria-label="Cerrar ventana"
             >
               <X className="w-5 h-5" />
@@ -273,16 +366,40 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           </div>
         </div>
 
-        {/* Contenedor del Certificado */}
+        {/* Notificación de éxito al guardar en la galería del celular */}
+        {gallerySuccess && (
+          <div 
+            className="px-4 py-2.5 text-xs font-bold text-white flex items-center justify-center gap-2 shadow-inner no-print animate-fade-in"
+            style={{ backgroundColor: '#059669' }}
+          >
+            <Check className="w-4 h-4 text-amber-300" />
+            <span>¡Imagen guardada en tu celular! Ya la puedes encontrar en tu Galería de Fotos / Descargas para enviarla por WhatsApp.</span>
+          </div>
+        )}
+
+        {/* Notificación informativa amigable en teléfonos móviles */}
         <div 
-          className="p-3 sm:p-8 flex justify-center items-start overflow-x-auto"
+          className="px-3 py-1.5 text-[11px] flex items-center justify-between gap-2 border-b no-print"
+          style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#475569' }}
+        >
+          <span className="flex items-center gap-1.5">
+            <Smartphone className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span><strong>En celular:</strong> Descarga el PDF, guárdalo como Foto en tu Galería o compártelo por WhatsApp.</span>
+          </span>
+          <span className="hidden sm:inline text-[10px] text-slate-400">Escala adaptable</span>
+        </div>
+
+        {/* Contenedor del Certificado con scroll libre y escala responsive */}
+        <div 
+          className="p-2 sm:p-8 flex justify-center items-start overflow-x-auto"
           style={{ backgroundColor: '#f1f5f9' }}
         >
           <div
             style={{ 
               transform: `scale(${zoomLevel})`,
               transformOrigin: 'top center',
-              transition: 'transform 0.15s ease-out'
+              transition: 'transform 0.15s ease-out',
+              marginBottom: zoomLevel < 1 ? `-${Math.round((1 - zoomLevel) * 780)}px` : '0px'
             }}
             className="w-full max-w-[740px]"
           >
@@ -593,9 +710,9 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
           </div>
         </div>
 
-        {/* Barra Inferior Fija (Sticky) */}
+        {/* Barra Inferior Fija (Sticky) con Opciones Móviles Claras */}
         <div 
-          className="sticky bottom-0 z-50 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-lg no-print"
+          className="sticky bottom-0 z-50 px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shadow-lg no-print"
           style={{ backgroundColor: '#ffffff', borderTop: '1px solid #e2e8f0' }}
         >
           <div className="flex items-center gap-2 text-xs" style={{ color: '#475569' }}>
@@ -606,44 +723,75 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               title="Volver arriba"
             >
               <ArrowUp className="w-3.5 h-3.5" />
-              <span className="text-[11px] font-semibold">Subir al Inicio</span>
+              <span className="text-[11px] font-semibold hidden sm:inline">Subir al Inicio</span>
             </button>
-            <span className="hidden sm:inline" style={{ color: '#cbd5e1' }}>|</span>
-            <span className="hidden sm:inline">Desplaza hacia abajo para ver firmas y QR.</span>
+            <span className="hidden md:inline text-slate-400">|</span>
+            <span className="hidden md:inline text-[11px]">Desplaza hacia abajo para revisar las firmas y el código QR.</span>
           </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* Opción 1: Guardar en Galería (Foto PNG que se guarda directo en Galería del Celular) */}
             <button
-              onClick={handlePrint}
-              className="px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
-              style={{ backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1' }}
+              onClick={handleSaveToGallery}
+              disabled={isExporting}
+              className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold text-white rounded-xl shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              style={{ backgroundColor: '#059669' }}
+              title="Guardar imagen directamente en la Galería de fotos del celular"
             >
-              <Printer className="w-4 h-4" style={{ color: '#f59e0b' }} />
-              <span>Imprimir</span>
+              <ImageIcon className="w-3.5 h-3.5 text-white" />
+              <span>Guardar en Galería</span>
             </button>
 
+            {/* Opción 2: Descargar Documento en PDF */}
             <button
               onClick={handleDownloadPDF}
               disabled={isExporting}
-              className="px-6 py-2.5 text-xs font-black text-white rounded-xl shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+              className="flex-1 sm:flex-initial px-4 py-2 text-xs font-black text-white rounded-xl shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
               style={{ backgroundColor: '#0052cc' }}
+              title="Descargar archivo PDF oficial en el dispositivo"
             >
-              {isExporting ? (
+              {isExporting && exportMessage.includes('PDF') ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   <span>Generando PDF...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4 text-white" />
-                  <span>Descargar Certificado en PDF</span>
+                  <Download className="w-3.5 h-3.5 text-white" />
+                  <span>Descargar PDF</span>
                 </>
               )}
             </button>
 
+            {/* Opción 3: Compartir nativo (WhatsApp, Telegram, etc.) */}
+            {canNativeShare && (
+              <button
+                onClick={handleShareMobile}
+                disabled={isExporting}
+                className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold text-white rounded-xl shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                style={{ backgroundColor: '#16a34a' }}
+                title="Compartir por WhatsApp u otras aplicaciones"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Compartir</span>
+              </button>
+            )}
+
+            {/* Opción 4: Imprimir */}
+            <button
+              onClick={handlePrint}
+              className="hidden sm:flex px-3.5 py-2 text-xs font-bold rounded-xl transition-colors items-center gap-1.5"
+              style={{ backgroundColor: '#ffffff', color: '#334155', border: '1px solid #cbd5e1' }}
+              title="Imprimir documento oficial en papel"
+            >
+              <Printer className="w-3.5 h-3.5" style={{ color: '#f59e0b' }} />
+              <span>Imprimir</span>
+            </button>
+
+            {/* Botón Cerrar */}
             <button
               onClick={onClose}
-              className="px-4 py-2 text-xs font-semibold rounded-xl transition-colors"
+              className="px-3 py-2 text-xs font-semibold rounded-xl transition-colors shrink-0"
               style={{ color: '#475569', backgroundColor: '#f1f5f9' }}
             >
               Cerrar
