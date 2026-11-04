@@ -19,6 +19,7 @@ import {
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { PMD_LOGO_BASE64 } from '../assets/logoBase64';
+import { generateNativeCertificateCanvas } from '../lib/certificateCanvas';
 
 interface CertificateModalProps {
   data: CertificateData | null;
@@ -62,41 +63,68 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
 
   if (!isOpen || !data) return null;
 
-  // Generador centralizado de canvas en alta calidad
-  const generateCertificateCanvas = async () => {
-    if (!certificateRef.current) return null;
-    const originalTransform = certificateRef.current.style.transform;
-    certificateRef.current.style.transform = 'none';
+  // Generador centralizado de canvas de alta calidad (con fallback nativo Canvas 2D infalible para celulares)
+  const generateCertificateCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    // 1. Intentar renderizado mediante html2canvas con normalización del viewport
+    if (certificateRef.current) {
+      const certEl = certificateRef.current;
+      const parent = certEl.parentElement;
+      const origParentTransform = parent ? parent.style.transform : '';
+      const origParentMargin = parent ? parent.style.marginBottom : '';
 
-    try {
-      const canvas = await html2canvas(certificateRef.current, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: false,
-        logging: false,
-        backgroundColor: '#ffffff',
-        onclone: (clonedDoc) => {
-          const el = clonedDoc.getElementById('official-certificate');
-          if (el) {
-            el.style.transform = 'none';
-            el.style.boxShadow = 'none';
-            el.style.margin = '0 auto';
-            if (el.parentElement) {
-              el.parentElement.style.transform = 'none';
-              el.parentElement.style.margin = '0';
-              el.parentElement.style.padding = '0';
-              el.parentElement.style.width = '100%';
-              el.parentElement.style.maxWidth = '740px';
-            }
-          }
+      try {
+        if (parent) {
+          parent.style.transform = 'none';
+          parent.style.marginBottom = '0';
         }
-      });
-      return canvas;
-    } finally {
-      if (certificateRef.current) {
-        certificateRef.current.style.transform = originalTransform;
+
+        const canvas = await html2canvas(certEl, {
+          scale: 1.5,
+          useCORS: true,
+          allowTaint: true,
+          logging: false,
+          backgroundColor: '#ffffff',
+          scrollX: 0,
+          scrollY: 0,
+          windowWidth: 760,
+          onclone: (clonedDoc) => {
+            // Eliminar links externos de fuentes que causan SecurityError al leer cssRules
+            clonedDoc.querySelectorAll('link[rel="stylesheet"]').forEach((link) => {
+              if (link.getAttribute('href')?.includes('fonts.googleapis.com')) {
+                link.remove();
+              }
+            });
+            // Eliminar backdropFilter en clonedDoc
+            clonedDoc.querySelectorAll('*').forEach((node: any) => {
+              if (node.style) {
+                if (node.style.backdropFilter) node.style.backdropFilter = 'none';
+                if (node.style.webkitBackdropFilter) node.style.webkitBackdropFilter = 'none';
+              }
+            });
+          }
+        });
+
+        if (canvas) return canvas;
+      } catch (h2cError) {
+        console.warn('html2canvas no pudo renderizar en este dispositivo, activando generador nativo 2D:', h2cError);
+      } finally {
+        if (parent) {
+          parent.style.transform = origParentTransform;
+          parent.style.marginBottom = origParentMargin;
+        }
       }
     }
+
+    // 2. Fallback INFALIBLE: Generador nativo Canvas 2D sin dependencias de DOM ni html2canvas
+    try {
+      if (data) {
+        return await generateNativeCertificateCanvas(data);
+      }
+    } catch (nativeError) {
+      console.error('Error en generador nativo Canvas 2D:', nativeError);
+    }
+
+    return null;
   };
 
   // 1. Descarga como PDF (Documento oficial)
