@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { PMD_LOGO_BASE64 } from '../assets/logoBase64';
 
 interface CertificateModalProps {
   data: CertificateData | null;
@@ -67,23 +68,35 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     const originalTransform = certificateRef.current.style.transform;
     certificateRef.current.style.transform = 'none';
 
-    const canvas = await html2canvas(certificateRef.current, {
-      scale: 2.2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      onclone: (clonedDoc) => {
-        const el = clonedDoc.getElementById('official-certificate');
-        if (el) {
-          el.style.transform = 'none';
-          el.style.boxShadow = 'none';
+    try {
+      const canvas = await html2canvas(certificateRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        logging: false,
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          const el = clonedDoc.getElementById('official-certificate');
+          if (el) {
+            el.style.transform = 'none';
+            el.style.boxShadow = 'none';
+            el.style.margin = '0 auto';
+            if (el.parentElement) {
+              el.parentElement.style.transform = 'none';
+              el.parentElement.style.margin = '0';
+              el.parentElement.style.padding = '0';
+              el.parentElement.style.width = '100%';
+              el.parentElement.style.maxWidth = '740px';
+            }
+          }
         }
+      });
+      return canvas;
+    } finally {
+      if (certificateRef.current) {
+        certificateRef.current.style.transform = originalTransform;
       }
-    });
-
-    certificateRef.current.style.transform = originalTransform;
-    return canvas;
+    }
   };
 
   // 1. Descarga como PDF (Documento oficial)
@@ -121,7 +134,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
   };
 
   // 2. Guardar en Galería (Imagen PNG de alta resolución)
-  // En smartphones (Android e iOS), descargar un PNG lo guarda directamente en Fotos / Galería
+  // En smartphones (Android e iOS), descarga el PNG directamente en el almacenamiento / Galería
   const handleSaveToGallery = async () => {
     if (!certificateRef.current) return;
     setIsExporting(true);
@@ -131,20 +144,51 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       const canvas = await generateCertificateCanvas();
       if (!canvas) throw new Error('No canvas');
 
-      const imgData = canvas.toDataURL('image/png');
       const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
-      const link = document.createElement('a');
-      link.download = `Certificado_PMD_SAS_${cleanDoc}.png`;
-      link.href = imgData;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const fileName = `Certificado_PMD_SAS_${cleanDoc}.png`;
+
+      // Conversión a Blob (el método más confiable y compatible en navegadores móviles Android/iOS)
+      let downloaded = false;
+      try {
+        const blob: Blob | null = await new Promise((resolve) => {
+          canvas.toBlob((b) => resolve(b), 'image/png', 1.0);
+        });
+
+        if (blob) {
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          link.setAttribute('download', fileName);
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }, 45000);
+          downloaded = true;
+        }
+      } catch (blobErr) {
+        console.warn('Fallo toBlob, usando dataURL como alternativa:', blobErr);
+      }
+
+      // Si toBlob no se pudo ejecutar, usar toDataURL como fallback
+      if (!downloaded) {
+        const imgData = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = imgData;
+        link.download = fileName;
+        link.setAttribute('download', fileName);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
 
       setGallerySuccess(true);
       setTimeout(() => setGallerySuccess(false), 4500);
     } catch (error) {
       console.error('Error guardando en galería:', error);
-      alert('Hubo un inconveniente al generar la imagen. Puedes descargarlo en PDF.');
+      alert('Hubo un inconveniente al generar la imagen. Puedes descargarlo en PDF o compartirlo.');
     } finally {
       setIsExporting(false);
       setExportMessage('');
@@ -162,13 +206,14 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
       if (!canvas) throw new Error('No canvas');
 
       const cleanDoc = data.docNumber.replace(/\D/g, '') || 'asociado';
+      const fileName = `Certificado_PMD_SAS_${cleanDoc}.png`;
 
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((b) => resolve(b), 'image/png', 0.95);
+      const blob: Blob | null = await new Promise((resolve) => {
+        canvas.toBlob((b) => resolve(b), 'image/png', 1.0);
       });
 
       if (blob && typeof navigator !== 'undefined' && navigator.share) {
-        const file = new File([blob], `Certificado_PMD_${cleanDoc}.png`, { type: 'image/png' });
+        const file = new File([blob], fileName, { type: 'image/png' });
         
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           await navigator.share({
@@ -192,6 +237,7 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
         console.warn('Error al compartir:', err);
+        await handleSaveToGallery();
       }
     } finally {
       setIsExporting(false);
@@ -449,9 +495,8 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               >
                 <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
                   <img
-                    src="/logo-pmd.png"
+                    src={PMD_LOGO_BASE64}
                     alt="Grupo PMD SAS"
-                    crossOrigin="anonymous"
                     style={{ height: '68px', width: 'auto', objectFit: 'contain' }}
                   />
                 </div>
@@ -742,7 +787,19 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
               <span>Guardar en Galería</span>
             </button>
 
-            {/* Opción 2: Descargar Documento en PDF */}
+            {/* Opción 2: Compartir / Enviar por WhatsApp directo en celular */}
+            <button
+              onClick={handleShareMobile}
+              disabled={isExporting}
+              className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold text-white rounded-xl shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              style={{ backgroundColor: '#16a34a' }}
+              title="Compartir por WhatsApp u otras aplicaciones"
+            >
+              <Share2 className="w-3.5 h-3.5 text-white" />
+              <span>Enviar por WhatsApp</span>
+            </button>
+
+            {/* Opción 3: Descargar Documento en PDF */}
             <button
               onClick={handleDownloadPDF}
               disabled={isExporting}
@@ -762,20 +819,6 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                 </>
               )}
             </button>
-
-            {/* Opción 3: Compartir nativo (WhatsApp, Telegram, etc.) */}
-            {canNativeShare && (
-              <button
-                onClick={handleShareMobile}
-                disabled={isExporting}
-                className="flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold text-white rounded-xl shadow transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
-                style={{ backgroundColor: '#16a34a' }}
-                title="Compartir por WhatsApp u otras aplicaciones"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Compartir</span>
-              </button>
-            )}
 
             {/* Opción 4: Imprimir */}
             <button
