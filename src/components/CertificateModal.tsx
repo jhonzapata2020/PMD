@@ -705,17 +705,10 @@ export const CertificateModal: React.FC<CertificateModalProps> = ({
                   gap: '12px'
                 }}
               >
-                {/* Firma */}
+                {/* Dirección de Operaciones (sin firmas ni rayas) */}
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', color: '#0c2d57', fontSize: '17px', fontWeight: 800 }}>
-                      J. Zapata M.
-                    </span>
-                  </div>
-                  <div style={{ borderTop: '1px solid #94a3b8', paddingTop: '3px' }}>
-                    <p style={{ fontSize: '9.5px', fontWeight: 700, color: '#1e293b', margin: 0 }}>Dirección de Operaciones</p>
-                    <p style={{ fontSize: '7.5px', color: '#64748b', margin: 0 }}>Grupo PMD SAS • NIT 901262947-1</p>
-                  </div>
+                  <p style={{ fontSize: '11px', fontWeight: 800, color: '#0c2d57', margin: 0 }}>Dirección de Operaciones</p>
+                  <p style={{ fontSize: '8px', color: '#64748b', margin: '3px 0 0 0' }}>Grupo PMD SAS • NIT 901262947-1</p>
                 </div>
 
                 {/* Sello */}

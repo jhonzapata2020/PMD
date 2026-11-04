@@ -330,25 +330,15 @@ export async function generateNativeCertificateCanvas(data: CertificateData): Pr
   // 13. Firmas, Sellos y QR
   const signSectionY = leyY + 45;
 
-  // Firma (Izquierda)
+  // Dirección de Operaciones (Izquierda - sin firmas ni rayas)
   ctx.textAlign = 'center';
   ctx.fillStyle = '#0c2d57';
-  ctx.font = 'italic bold 36px Georgia, serif';
-  ctx.fillText('J. Zapata M.', 230, signSectionY + 50);
+  ctx.font = 'bold 18px Inter, Arial, sans-serif';
+  ctx.fillText('Dirección de Operaciones', 230, signSectionY + 55);
 
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(110, signSectionY + 68);
-  ctx.lineTo(350, signSectionY + 68);
-  ctx.stroke();
-
-  ctx.fillStyle = '#1e293b';
-  ctx.font = 'bold 15px Inter, Arial, sans-serif';
-  ctx.fillText('Dirección de Operaciones', 230, signSectionY + 90);
   ctx.fillStyle = '#64748b';
-  ctx.font = '12px Inter, Arial, sans-serif';
-  ctx.fillText('Grupo PMD SAS • NIT 901262947-1', 230, signSectionY + 108);
+  ctx.font = '13px Inter, Arial, sans-serif';
+  ctx.fillText('Grupo PMD SAS • NIT 901262947-1', 230, signSectionY + 80);
 
   // Sello Institucional (Centro)
   const sealX = width / 2;
